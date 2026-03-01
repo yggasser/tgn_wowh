@@ -1,4 +1,4 @@
-// Map viewer UI: filtering, stable object card, separate popup edit view, and color editing
+// Fixed category filtering + stable object card + per-object color + object editing
 const state={cats:[],selectedCats:new Set(),catFilter:"",q:"",showLabels:true,map:null,layer:null,lastReq:0,abort:null};
 const debounce=(fn,ms)=>{let t=null;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};};
 const setStatus=(t)=>{const el=document.getElementById("status");if(el) el.textContent=t;};
@@ -40,17 +40,14 @@ function ensurePopupStyles(){
 .tg-chip{display:inline-block; padding:3px 8px; border:1px solid #e6e6e6; border-radius:999px; font-size:12px; background:#fafafa;}
 .tg-links{display:flex; flex-wrap:wrap; gap:8px;}
 .tg-links a{font-size:12px; color:#1558d6; text-decoration:none; word-break:break-all;}
-.tg-actions{margin-top:12px; display:flex; gap:8px;}
-.tg-edit{max-width:640px; font-size:14px; line-height:1.35;}
-.tg-edit-title{font-weight:900; font-size:17px; margin:0 0 10px;}
+.tg-edit{margin-top:12px; padding-top:10px; border-top:1px dashed #e5e5e5;}
+.tg-edit-title{font-size:12px; color:#666; margin:0 0 8px;}
 .tg-edit-row{margin:0 0 8px;}
-.tg-edit-label{font-size:12px; color:#666; margin:0 0 4px;}
 .tg-edit-input,.tg-edit-textarea{width:100%; border:1px solid #ddd; border-radius:10px; padding:7px 9px; font-size:13px; font-family:inherit;}
-.tg-edit-color{width:64px; height:36px; border:1px solid #ddd; border-radius:10px; padding:2px; background:#fff;}
 .tg-edit-textarea{min-height:90px; resize:vertical;}
-.tg-edit-actions{display:flex; gap:8px; align-items:center; margin-top:10px;}
-.tg-btn{padding:7px 10px; border:1px solid #d5d5d5; border-radius:10px; background:#f8f8f8; cursor:pointer;}
-.tg-btn:hover{background:#efefef;}
+.tg-edit-actions{display:flex; gap:8px; align-items:center;}
+.tg-edit-btn{padding:7px 10px; border:1px solid #d5d5d5; border-radius:10px; background:#f8f8f8; cursor:pointer;}
+.tg-edit-btn:hover{background:#efefef;}
 .tg-edit-status{font-size:12px; color:#666;}
 `;
   const style=document.createElement("style");
@@ -132,13 +129,13 @@ function buildCardHTML(obj,id){
   const partial=!!viewer.partial;
   const warning=viewer.warning||"";
 
-  const fields=editableFields(obj,id);
-  const title=fields.title;
-  const desc=fields.description;
-  const cats=fields.categories;
+  const title=obj.title||obj["wm-название"]||obj.id||id;
   const address=idToAddress(id);
+  const desc=obj.description||obj["описание"]||"";
+  const catsRaw=obj.categories ?? obj["wm-категория"] ?? [];
+  const cats=parseMaybeJsonArray(catsRaw);
   const photos=pickPhotos(obj);
-  const color=fields.viewer_color;
+  const color=(obj.viewer_color||obj["viewer_color"]||"").trim();
 
   const warnBlock = partial || warning
     ? `<div class="tg-warning">${escapeHtml((warning||"Данные могут быть неполными"))}</div>`
@@ -166,6 +163,18 @@ function buildCardHTML(obj,id){
     ? `<div class="tg-section"><div class="tg-section-title">Ещё фото (ссылки)</div><div class="tg-links">${photos.slice(1).map(u=>`<a href="${escapeAttr(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`).join(" ")}</div></div>`
     : ``;
 
+  const editBlock = `
+    <div class="tg-edit" data-editor-root data-object-id="${escapeAttr(id)}">
+      <div class="tg-edit-title">Редактирование</div>
+      <div class="tg-edit-row"><input class="tg-edit-input" data-edit-title placeholder="Название" value="${escapeAttr(title)}"/></div>
+      <div class="tg-edit-row"><textarea class="tg-edit-textarea" data-edit-description placeholder="Описание">${escapeHtml(desc)}</textarea></div>
+      <div class="tg-edit-row"><input class="tg-edit-input" data-edit-categories placeholder="Категории через запятую" value="${escapeAttr(cats.join(", "))}"/></div>
+      <div class="tg-edit-actions">
+        <button type="button" class="tg-edit-btn" data-edit-save>Сохранить</button>
+        <span class="tg-edit-status" data-edit-status></span>
+      </div>
+    </div>`;
+
   return `
   <div class="tg-card">
     ${warnBlock}
@@ -176,38 +185,7 @@ function buildCardHTML(obj,id){
     ${descHtml}
     ${catsHtml}
     ${morePhotos}
-    <div class="tg-actions">
-      <button type="button" class="tg-btn" data-open-edit>Редактировать</button>
-    </div>
-  </div>`;
-}
-
-function buildEditHTML(obj,id){
-  const fields=editableFields(obj,id);
-  return `
-  <div class="tg-edit" data-editor-root>
-    <div class="tg-edit-title">Редактирование объекта</div>
-    <div class="tg-edit-row">
-      <div class="tg-edit-label">Название</div>
-      <input class="tg-edit-input" data-edit-title placeholder="Название" value="${escapeAttr(fields.title)}"/>
-    </div>
-    <div class="tg-edit-row">
-      <div class="tg-edit-label">Описание</div>
-      <textarea class="tg-edit-textarea" data-edit-description placeholder="Описание">${escapeHtml(fields.description)}</textarea>
-    </div>
-    <div class="tg-edit-row">
-      <div class="tg-edit-label">Категории (через запятую)</div>
-      <input class="tg-edit-input" data-edit-categories placeholder="Категории" value="${escapeAttr(fields.categories.join(", "))}"/>
-    </div>
-    <div class="tg-edit-row">
-      <div class="tg-edit-label">Цвет объекта</div>
-      <input class="tg-edit-color" type="color" data-edit-color value="${escapeAttr(fields.viewer_color)}"/>
-    </div>
-    <div class="tg-edit-actions">
-      <button type="button" class="tg-btn" data-edit-save>Сохранить</button>
-      <button type="button" class="tg-btn" data-edit-cancel>Отмена</button>
-      <span class="tg-edit-status" data-edit-status></span>
-    </div>
+    ${editBlock}
   </div>`;
 }
 
@@ -215,45 +193,31 @@ function parseCategoriesInput(raw){
   return String(raw||"").split(",").map(s=>s.trim()).filter(Boolean);
 }
 
-function renderCardView(popup,id,obj){
-  popup.setContent(buildCardHTML(obj,id));
+function attachEditorHandlers(popup,id){
   const root=popup.getElement && popup.getElement();
   if(!root) return;
-  const openEditBtn=root.querySelector("[data-open-edit]");
-  if(!openEditBtn) return;
-  openEditBtn.addEventListener("click",()=>renderEditView(popup,id,obj));
-}
-
-function renderEditView(popup,id,obj){
-  popup.setContent(buildEditHTML(obj,id));
-  const root=popup.getElement && popup.getElement();
-  if(!root) return;
-  const titleEl=root.querySelector("[data-edit-title]");
-  const descEl=root.querySelector("[data-edit-description]");
-  const catsEl=root.querySelector("[data-edit-categories]");
-  const colorEl=root.querySelector("[data-edit-color]");
-  const saveBtn=root.querySelector("[data-edit-save]");
-  const cancelBtn=root.querySelector("[data-edit-cancel]");
-  const statusEl=root.querySelector("[data-edit-status]");
-  if(!titleEl || !descEl || !catsEl || !colorEl || !saveBtn || !cancelBtn || !statusEl) return;
+  const editor=root.querySelector("[data-editor-root]");
+  if(!editor) return;
+  const titleEl=editor.querySelector("[data-edit-title]");
+  const descEl=editor.querySelector("[data-edit-description]");
+  const catsEl=editor.querySelector("[data-edit-categories]");
+  const saveBtn=editor.querySelector("[data-edit-save]");
+  const statusEl=editor.querySelector("[data-edit-status]");
+  if(!titleEl || !descEl || !catsEl || !saveBtn || !statusEl) return;
 
   const setEditStatus=(text,isError=false)=>{
     statusEl.textContent=text;
     statusEl.style.color=isError?"#8b0000":"#666";
   };
 
-  cancelBtn.addEventListener("click",()=>renderCardView(popup,id,obj));
-
   saveBtn.addEventListener("click", async ()=>{
     const payload={
       title:String(titleEl.value||"").trim(),
       description:String(descEl.value||""),
-      categories:parseCategoriesInput(catsEl.value),
-      viewer_color:String(colorEl.value||"#3388FF").toUpperCase()
+      categories:parseCategoriesInput(catsEl.value)
     };
     if(!payload.title){ setEditStatus("Название не может быть пустым",true); return; }
     saveBtn.disabled=true;
-    cancelBtn.disabled=true;
     setEditStatus("Сохраняю…");
     try{
       await fetchJSON(`/api/object/${encodeURIComponent(id)}`,{
@@ -261,13 +225,17 @@ function renderEditView(popup,id,obj){
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify(payload)
       });
+      setEditStatus("Сохранено");
       await reloadObjects();
-      const fresh=await fetchJSON(`/api/object/${encodeURIComponent(id)}`);
-      renderCardView(popup,id,fresh);
+      try{
+        const fresh=await fetchJSON(`/api/object/${encodeURIComponent(id)}`);
+        popup.setContent(buildCardHTML(fresh,id));
+        attachEditorHandlers(popup,id);
+      }catch(_){ }
     }catch(e){
       setEditStatus(`Ошибка: ${e.message||e}`,true);
+    }finally{
       saveBtn.disabled=false;
-      cancelBtn.disabled=false;
     }
   });
 }
@@ -280,7 +248,8 @@ async function openPopupFor(id,latlng){
     .openOn(state.map);
   try{
     const obj=await fetchJSON(`/api/object/${encodeURIComponent(id)}`);
-    renderCardView(popup,id,obj);
+    popup.setContent(buildCardHTML(obj,id));
+    attachEditorHandlers(popup,id);
   }catch(e){
     popup.setContent(`<div class="tg-card">
       <div class="tg-title"><span>${escapeHtml(id)}</span></div>
