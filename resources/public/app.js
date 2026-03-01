@@ -114,6 +114,17 @@ function idToAddress(id){
   return s.replaceAll("_"," ").replace(/\s+/g," ").trim();
 }
 
+function editableFields(obj,id){
+  const rawColor=(obj.viewer_color||obj["viewer_color"]||"").trim();
+  const color=/^#[0-9a-fA-F]{6}$/.test(rawColor)?rawColor.toUpperCase():"#3388FF";
+  return {
+    title: obj.title||obj["wm-название"]||obj.id||id,
+    description: obj.description||obj["описание"]||"",
+    categories: parseMaybeJsonArray(obj.categories ?? obj["wm-категория"] ?? []),
+    viewer_color: color
+  };
+}
+
 function buildCardHTML(obj,id){
   const viewer=obj._viewer||obj.viewer||{};
   const partial=!!viewer.partial;
