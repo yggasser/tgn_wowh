@@ -32,6 +32,15 @@
    :headers {"Content-Type" "application/json; charset=utf-8"}
    :body (json/generate-string data)})
 
+(defn- parse-json-body [req]
+  (try
+    (let [raw (some-> req :body slurp str/trim)]
+      (if (str/blank? raw)
+        {}
+        (json/parse-string raw true)))
+    (catch Exception _
+      {})))
+
 (defn- slurp-utf8 [res] (slurp res :encoding "UTF-8"))
 
 (defn- read-json-resource [path]
@@ -441,7 +450,8 @@
     (if-let [err (:load-error @state)]
       (error-response 500 {:error "data_load_failed" :message err})
       (let [id (decode-id (get-in req [:params :id]))
-            edit (normalize-edit-payload (:body req))
+            payload (parse-json-body req)
+            edit (normalize-edit-payload payload)
             real (or (when (contains? (:by-id @state) id) id)
                      (get (:idnorm->id @state) (normalize-id id)))]
         (if (and real (contains? (:by-id @state) real))
@@ -452,4 +462,3 @@
           (error-response 404 {:error "not_found" :id id :normalized (normalize-id id)})))))
 
   (route/not-found "<h1>not found</h1>"))
-
