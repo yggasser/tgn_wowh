@@ -46,6 +46,7 @@ function ensurePopupStyles(){
 .tg-edit-row{margin:0 0 8px;}
 .tg-edit-label{font-size:12px; color:#666; margin:0 0 4px;}
 .tg-edit-input,.tg-edit-textarea{width:100%; border:1px solid #ddd; border-radius:10px; padding:7px 9px; font-size:13px; font-family:inherit;}
+.tg-edit-color{width:64px; height:36px; border:1px solid #ddd; border-radius:10px; padding:2px; background:#fff;}
 .tg-edit-textarea{min-height:90px; resize:vertical;}
 .tg-edit-actions{display:flex; gap:8px; align-items:center; margin-top:10px;}
 .tg-btn{padding:7px 10px; border:1px solid #d5d5d5; border-radius:10px; background:#f8f8f8; cursor:pointer;}
@@ -116,10 +117,13 @@ function idToAddress(id){
 }
 
 function editableFields(obj,id){
+  const rawColor=(obj.viewer_color||obj["viewer_color"]||"").trim();
+  const color=/^#[0-9a-fA-F]{6}$/.test(rawColor)?rawColor.toUpperCase():"#3388FF";
   return {
     title: obj.title||obj["wm-название"]||obj.id||id,
     description: obj.description||obj["описание"]||"",
-    categories: parseMaybeJsonArray(obj.categories ?? obj["wm-категория"] ?? [])
+    categories: parseMaybeJsonArray(obj.categories ?? obj["wm-категория"] ?? []),
+    viewer_color: color
   };
 }
 
@@ -134,7 +138,7 @@ function buildCardHTML(obj,id){
   const cats=fields.categories;
   const address=idToAddress(id);
   const photos=pickPhotos(obj);
-  const color=(obj.viewer_color||obj["viewer_color"]||"").trim();
+  const color=fields.viewer_color;
 
   const warnBlock = partial || warning
     ? `<div class="tg-warning">${escapeHtml((warning||"Данные могут быть неполными"))}</div>`
@@ -195,6 +199,10 @@ function buildEditHTML(obj,id){
       <div class="tg-edit-label">Категории (через запятую)</div>
       <input class="tg-edit-input" data-edit-categories placeholder="Категории" value="${escapeAttr(fields.categories.join(", "))}"/>
     </div>
+    <div class="tg-edit-row">
+      <div class="tg-edit-label">Цвет объекта</div>
+      <input class="tg-edit-color" type="color" data-edit-color value="${escapeAttr(fields.viewer_color)}"/>
+    </div>
     <div class="tg-edit-actions">
       <button type="button" class="tg-btn" data-edit-save>Сохранить</button>
       <button type="button" class="tg-btn" data-edit-cancel>Отмена</button>
@@ -223,10 +231,11 @@ function renderEditView(popup,id,obj){
   const titleEl=root.querySelector("[data-edit-title]");
   const descEl=root.querySelector("[data-edit-description]");
   const catsEl=root.querySelector("[data-edit-categories]");
+  const colorEl=root.querySelector("[data-edit-color]");
   const saveBtn=root.querySelector("[data-edit-save]");
   const cancelBtn=root.querySelector("[data-edit-cancel]");
   const statusEl=root.querySelector("[data-edit-status]");
-  if(!titleEl || !descEl || !catsEl || !saveBtn || !cancelBtn || !statusEl) return;
+  if(!titleEl || !descEl || !catsEl || !colorEl || !saveBtn || !cancelBtn || !statusEl) return;
 
   const setEditStatus=(text,isError=false)=>{
     statusEl.textContent=text;
@@ -239,7 +248,8 @@ function renderEditView(popup,id,obj){
     const payload={
       title:String(titleEl.value||"").trim(),
       description:String(descEl.value||""),
-      categories:parseCategoriesInput(catsEl.value)
+      categories:parseCategoriesInput(catsEl.value),
+      viewer_color:String(colorEl.value||"#3388FF").toUpperCase()
     };
     if(!payload.title){ setEditStatus("Название не может быть пустым",true); return; }
     saveBtn.disabled=true;
