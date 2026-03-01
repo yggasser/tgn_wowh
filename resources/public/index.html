@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Taganrog Viewer</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="/styles.css?v=FINAL2" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="block">
+        <div class="title">Filters</div>
+
+        <label class="field">
+          <div class="label">Search (title / street / id)</div>
+          <input id="q" class="input" placeholder="e.g.: Aleksandrovskaya_51" />
+        </label>
+
+        <label class="field">
+          <div class="label">Category filter</div>
+          <input id="catFilter" class="input" placeholder="type to filter categories" />
+        </label>
+
+        <label class="toggle">
+          <input id="toggleLabels" type="checkbox" checked />
+          <span>Show labels on map</span>
+        </label>
+
+        <div class="rowBtns">
+          <button id="reloadStyles" class="btn" type="button">Reload styles</button>
+        </div>
+
+        <div class="catsHead">
+          <div class="hint" id="catsHint">Loading…</div>
+          <button id="clearCats" class="btn" type="button">Reset</button>
+        </div>
+
+        <div id="cats" class="cats"></div>
+      </div>
+
+      <div class="block details">
+        <div class="title">Hint</div>
+        <div class="detailsBody">Click an object on the map to open a card.</div>
+      </div>
+    </aside>
+
+    <main class="mapWrap">
+      <div id="map"></div>
+      <div class="status" id="status">—</div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/app.js?v=FINAL2"></script>
+</body>
+</html>
