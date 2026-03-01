@@ -319,6 +319,21 @@ async function openPopupFor(id,latlng){
       <div class="tg-warning" style="border-color:#ffd0d0;background:#fff3f3;color:#7a0000">Не удалось загрузить карточку: ${escapeHtml(String(e.message||e))}</div>
       <div class="tg-meta">Tried URL: /api/object/${escapeHtml(encodeURIComponent(id))}</div>
     </div>`);
+  };
+
+  const watchdog=setTimeout(()=>showError("Превышено время ожидания ответа"),13000);
+
+  try{
+    const obj=await fetchJSON(`/api/object/${encodeURIComponent(id)}?t=${Date.now()}`,{timeoutMs:12000});
+    if(settled) return;
+    settled=true;
+    clearTimeout(watchdog);
+    popup.setContent(buildCardHTML(obj,id));
+    protectPopupInteractions(popup);
+    attachCardHandlers(popup,obj,id);
+  }catch(e){
+    clearTimeout(watchdog);
+    showError(e && e.message ? e.message : e);
   }
 }
 
