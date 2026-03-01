@@ -2,8 +2,25 @@
 const state={cats:[],selectedCats:new Set(),catFilter:"",q:"",showLabels:true,map:null,layer:null,lastReq:0,abort:null};
 const debounce=(fn,ms)=>{let t=null;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};};
 const setStatus=(t)=>{const el=document.getElementById("status");if(el) el.textContent=t;};
-async function fetchJSON(url,{signal,method="GET",headers,body}={}){
-  const r=await fetch(url,{signal,method,headers,body});
+async function fetchJSON(url,{signal,method="GET",headers,body,timeoutMs=20000}={}){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(), timeoutMs);
+  const onAbort=()=>controller.abort(signal?.reason);
+  if(signal) signal.addEventListener("abort", onAbort, {once:true});
+  let r;
+  try{
+    r=await fetch(url,{signal:controller.signal,method,headers,body});
+  }catch(e){
+    if(String(e?.name)==="AbortError" && !signal?.aborted){
+      const err=new Error(`Request timeout after ${timeoutMs}ms`);
+      err.code="ETIMEDOUT";
+      throw err;
+    }
+    throw e;
+  }finally{
+    clearTimeout(timer);
+    if(signal) signal.removeEventListener("abort", onAbort);
+  }
   if(!r.ok){
     let detail="";
     try{ const e=await r.json(); detail=e?.message||e?.error||""; }catch(_){ }
@@ -288,18 +305,18 @@ async function openPopupFor(id,latlng){
   ensurePopupStyles();
   const popup=L.popup({className:"tg-popup",maxWidth:660,minWidth:520})
     .setLatLng(latlng)
-    .setContent('<div style="font-size:13px;color:#777">Loading…</div>')
+    .setContent('<div style="font-size:13px;color:#4c5d7a">Загрузка карточки…</div>')
     .openOn(state.map);
   protectPopupInteractions(popup);
   try{
-    const obj=await fetchJSON(`/api/object/${encodeURIComponent(id)}`);
+    const obj=await fetchJSON(`/api/object/${encodeURIComponent(id)}`,{timeoutMs:12000});
     popup.setContent(buildCardHTML(obj,id));
     attachCardHandlers(popup,obj,id);
   }catch(e){
     popup.setContent(`<div class="tg-card">
       <div class="tg-title"><span>${escapeHtml(id)}</span></div>
       <div class="tg-meta">Адрес: ${escapeHtml(idToAddress(id))}</div>
-      <div class="tg-warning" style="border-color:#ffd0d0;background:#fff3f3;color:#7a0000">Card error: ${escapeHtml(String(e.message||e))}</div>
+      <div class="tg-warning" style="border-color:#ffd0d0;background:#fff3f3;color:#7a0000">Не удалось загрузить карточку: ${escapeHtml(String(e.message||e))}</div>
       <div class="tg-meta">Tried URL: /api/object/${escapeHtml(encodeURIComponent(id))}</div>
     </div>`);
   }
