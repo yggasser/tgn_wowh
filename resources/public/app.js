@@ -131,6 +131,19 @@ function pickPhotos(obj){
   return parseMaybeJsonArray(obj["wm-фото"] || obj["wm_photo"] || obj.photos || obj.photo || obj["photos"] || []);
 }
 
+function featureToCardObject(feature){
+  const p=(feature && feature.properties) || {};
+  return {
+    id:p.id,
+    title:p.title || p["wm-название"],
+    description:p.description || p["описание"],
+    categories:p.categories ?? p["wm-категория"] ?? p["wm-category"] ?? p["wm_категория"] ?? [],
+    viewer_color:p.viewer_color ?? p.viewerColor ?? p.color,
+    "wm-фото":p["wm-фото"] ?? p["wm_photo"] ?? p.photos ?? p.photo ?? [],
+    _viewer:{partial:true,warning:"Показаны данные из слоя карты. Полная карточка догружается…"}
+  };
+}
+
 function idToAddress(id){
   const s=String(id??"");
   return s.replaceAll("_"," ").replace(/\s+/g," ").trim();
@@ -301,8 +314,9 @@ function attachEditorHandlers(popup,id,sourceObj){
   });
 }
 
-async function openPopupFor(id,latlng){
+async function openPopupFor(id,latlng,feature){
   ensurePopupStyles();
+  const fallbackObj=featureToCardObject(feature);
   const popup=L.popup({className:"tg-popup",maxWidth:660,minWidth:520})
     .setLatLng(latlng)
     .setContent('<div style="font-size:13px;color:#4c5d7a">Загрузка карточки…</div>')
@@ -343,7 +357,7 @@ function onEachFeature(feature,layer){
   bindOrUnbindTooltip(layer,p.title||id||"");
   layer.on("click",(ev)=>{
     const latlng=ev.latlng||(layer.getBounds&&layer.getBounds().getCenter&&layer.getBounds().getCenter())||(layer.getLatLng&&layer.getLatLng());
-    openPopupFor(id,latlng);
+    openPopupFor(id,latlng,feature);
   });
 }
 
