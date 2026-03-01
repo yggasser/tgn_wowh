@@ -22,34 +22,39 @@ const norm=(s)=>String(s??"").trim().toLowerCase();
 function ensurePopupStyles(){
   if(document.getElementById("tg-popup-style")) return;
   const css=`
-.tg-popup .leaflet-popup-content{margin:14px 16px;}
-.tg-popup .leaflet-popup-content-wrapper{border-radius:14px;}
-.tg-card{max-width:640px; font-size:14px; line-height:1.35;}
-.tg-title{font-weight:900; font-size:18px; line-height:1.15; margin:0 0 6px; display:flex; align-items:flex-start; gap:10px;}
+.tg-popup .leaflet-popup-content{margin:12px 14px;}
+.tg-popup .leaflet-popup-content-wrapper{border-radius:16px; box-shadow:0 16px 34px rgba(12,20,33,.22); background:#edf3ff;}
+.tg-popup .leaflet-popup-tip{box-shadow:0 8px 20px rgba(12,20,33,.18); background:#edf3ff;}
+.tg-card{max-width:640px; font-size:14px; line-height:1.42; color:#17212e;}
+.tg-card-head{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin:0 0 8px;}
+.tg-title{font-weight:900; font-size:19px; line-height:1.15; margin:0; display:flex; align-items:flex-start; gap:10px; flex:1;}
 .tg-color-dot{width:10px; height:10px; border-radius:999px; border:1px solid rgba(0,0,0,.18); margin-top:5px; flex:0 0 auto;}
-.tg-meta{color:#666; font-size:12.5px; margin:0 0 10px;}
-.tg-warning{padding:8px 10px; border:1px solid #ffe3a8; background:#fff7e6; border-radius:10px; font-size:12.5px; color:#6a4b00; margin:0 0 10px;}
-.tg-photo{border:1px solid #eee; border-radius:12px; overflow:hidden; background:#f6f6f6;}
+.tg-meta{color:#667085; font-size:12.5px; margin:0 0 12px;}
+.tg-warning{padding:9px 11px; border:1px solid #ffe3a8; background:#fff7e6; border-radius:10px; font-size:12.5px; color:#6a4b00; margin:0 0 12px;}
+.tg-photo{border:1px solid #d9e5f7; border-radius:14px; overflow:hidden; background:#eaf2ff;}
 .tg-photo img{width:100%; height:260px; object-fit:cover; display:block;}
-.tg-photo-empty{height:220px; display:flex; align-items:center; justify-content:center; color:#888; font-size:12.5px;}
-.tg-photo-caption{margin:8px 0 0; font-size:12px; color:#777;}
-.tg-desc{margin:10px 0 0; font-size:13px; color:#1b1b1b;}
+.tg-photo-empty{height:220px; display:flex; align-items:center; justify-content:center; color:#8b96a6; font-size:12.5px;}
+.tg-photo-caption{margin:8px 0 0; font-size:12px; color:#748093;}
+.tg-desc{margin:12px 0 0; font-size:13.5px; color:#1b2430;}
 .tg-section{margin:12px 0 0;}
-.tg-section-title{font-size:12px; color:#777; margin:0 0 6px;}
+.tg-section-title{font-size:12px; color:#748093; margin:0 0 6px; text-transform:uppercase; letter-spacing:.02em;}
 .tg-chips{display:flex; flex-wrap:wrap; gap:6px;}
-.tg-chip{display:inline-block; padding:3px 8px; border:1px solid #e6e6e6; border-radius:999px; font-size:12px; background:#fafafa;}
+.tg-chip{display:inline-block; padding:4px 10px; border:1px solid #c6d7f3; border-radius:999px; font-size:12px; background:#e8f0ff; color:#28518f;}
 .tg-links{display:flex; flex-wrap:wrap; gap:8px;}
 .tg-links a{font-size:12px; color:#1558d6; text-decoration:none; word-break:break-all;}
 .tg-card-actions{margin-top:12px; padding-top:10px; border-top:1px dashed #e5e5e5; display:flex; gap:8px;}
 .tg-edit{margin-top:12px; padding-top:10px; border-top:1px dashed #e5e5e5;}
 .tg-edit-title{font-size:12px; color:#666; margin:0 0 8px;}
 .tg-edit-row{margin:0 0 8px;}
-.tg-edit-input,.tg-edit-textarea{width:100%; border:1px solid #ddd; border-radius:10px; padding:7px 9px; font-size:13px; font-family:inherit;}
-.tg-edit-textarea{min-height:90px; resize:vertical;}
-.tg-edit-actions{display:flex; gap:8px; align-items:center;}
-.tg-edit-btn{padding:7px 10px; border:1px solid #d5d5d5; border-radius:10px; background:#f8f8f8; cursor:pointer;}
-.tg-edit-btn:hover{background:#efefef;}
-.tg-edit-status{font-size:12px; color:#666;}
+.tg-edit-input,.tg-edit-textarea{width:100%; border:1px solid #c4d2e8; border-radius:10px; padding:8px 10px; font-size:13px; font-family:inherit; background:#f3f7ff;}
+.tg-edit-input:focus,.tg-edit-textarea:focus{border-color:#4d86ff; box-shadow:0 0 0 3px rgba(77,134,255,.14); outline:none;}
+.tg-edit-textarea{min-height:100px; resize:vertical;}
+.tg-edit-actions{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+.tg-edit-btn{padding:7px 11px; border:1px solid #b9cbe8; border-radius:10px; background:linear-gradient(180deg,#f7faff,#e4eeff); color:#1d2838; cursor:pointer; font-weight:600;}
+.tg-edit-btn:hover{background:linear-gradient(180deg,#ffffff,#dbe8ff);}
+.tg-edit-btn-primary{border-color:#2f6df6; background:linear-gradient(180deg,#4e84ff,#2f6df6); color:#fff;}
+.tg-edit-btn-primary:hover{background:linear-gradient(180deg,#5a8cff,#2f6df6);}
+.tg-edit-status{font-size:12px; color:#667085;}
 `;
   const style=document.createElement("style");
   style.id="tg-popup-style";
@@ -167,7 +172,12 @@ function buildCardHTML(obj,id){
   return `
   <div class="tg-card">
     ${warnBlock}
-    <div class="tg-title">${colorDot}<span>${escapeHtml(title)}</span></div>
+    <div class="tg-card-head">
+      <div class="tg-title">${colorDot}<span>${escapeHtml(title)}</span></div>
+      <div class="tg-card-actions">
+        <button type="button" class="tg-edit-btn" data-open-editor>Ред.</button>
+      </div>
+    </div>
     <div class="tg-meta">Адрес: ${escapeHtml(address)}</div>
     ${photoBlock}
     ${photoCaption}
@@ -245,7 +255,7 @@ function attachEditorHandlers(popup,id,sourceObj){
     statusEl.style.color=isError?"#8b0000":"#666";
   };
 
-  saveBtn.addEventListener("click", async ()=>{
+  bindPopupAction(saveBtn, async ()=>{
     const payload={
       title:String(titleEl.value||"").trim(),
       description:String(descEl.value||""),
@@ -280,6 +290,7 @@ async function openPopupFor(id,latlng){
     .setLatLng(latlng)
     .setContent('<div style="font-size:13px;color:#777">Loading…</div>')
     .openOn(state.map);
+  protectPopupInteractions(popup);
   try{
     const obj=await fetchJSON(`/api/object/${encodeURIComponent(id)}`);
     popup.setContent(buildCardHTML(obj,id));
