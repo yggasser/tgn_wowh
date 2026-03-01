@@ -1,8 +1,19 @@
-// Fixed category filtering + stable object card + per-object color
+// Fixed category filtering + stable object card + per-object color + object editing
 const state={cats:[],selectedCats:new Set(),catFilter:"",q:"",showLabels:true,map:null,layer:null,lastReq:0,abort:null};
 const debounce=(fn,ms)=>{let t=null;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};};
 const setStatus=(t)=>{const el=document.getElementById("status");if(el) el.textContent=t;};
-async function fetchJSON(url,{signal}={}){const r=await fetch(url,{signal});if(!r.ok){const e=new Error(`${r.status} ${r.statusText}`);e.status=r.status;throw e;}return r.json();}
+async function fetchJSON(url,{signal,method="GET",headers,body}={}){
+  const r=await fetch(url,{signal,method,headers,body});
+  if(!r.ok){
+    let detail="";
+    try{ const e=await r.json(); detail=e?.message||e?.error||""; }catch(_){ }
+    const suffix=detail?`: ${detail}`:"";
+    const err=new Error(`${r.status} ${r.statusText}${suffix}`);
+    err.status=r.status;
+    throw err;
+  }
+  return r.json();
+}
 const bboxParam=(map)=>{const b=map.getBounds();return [b.getWest().toFixed(7),b.getSouth().toFixed(7),b.getEast().toFixed(7),b.getNorth().toFixed(7)].join(",");};
 const escapeHtml=(s)=>String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
 const escapeAttr=(s)=>escapeHtml(s).replaceAll("`","&#096;");
@@ -29,6 +40,15 @@ function ensurePopupStyles(){
 .tg-chip{display:inline-block; padding:3px 8px; border:1px solid #e6e6e6; border-radius:999px; font-size:12px; background:#fafafa;}
 .tg-links{display:flex; flex-wrap:wrap; gap:8px;}
 .tg-links a{font-size:12px; color:#1558d6; text-decoration:none; word-break:break-all;}
+.tg-edit{margin-top:12px; padding-top:10px; border-top:1px dashed #e5e5e5;}
+.tg-edit-title{font-size:12px; color:#666; margin:0 0 8px;}
+.tg-edit-row{margin:0 0 8px;}
+.tg-edit-input,.tg-edit-textarea{width:100%; border:1px solid #ddd; border-radius:10px; padding:7px 9px; font-size:13px; font-family:inherit;}
+.tg-edit-textarea{min-height:90px; resize:vertical;}
+.tg-edit-actions{display:flex; gap:8px; align-items:center;}
+.tg-edit-btn{padding:7px 10px; border:1px solid #d5d5d5; border-radius:10px; background:#f8f8f8; cursor:pointer;}
+.tg-edit-btn:hover{background:#efefef;}
+.tg-edit-status{font-size:12px; color:#666;}
 `;
   const style=document.createElement("style");
   style.id="tg-popup-style";
@@ -40,7 +60,7 @@ function parseMaybeJsonArray(v){
   if(Array.isArray(v)) return v;
   if(typeof v!=="string") return [];
   const s=v.trim(); if(!s) return [];
-  try{ const j=JSON.parse(s); if(Array.isArray(j)) return j; }catch(_){}
+  try{ const j=JSON.parse(s); if(Array.isArray(j)) return j; }catch(_){ }
   if(s.startsWith("[") && s.endsWith("]")){
     const m=s.slice(1,-1).match(/"([^"]+)"/g)||[];
     return m.map(x=>x.replaceAll('"',""));
@@ -64,7 +84,7 @@ function getFeatureColor(feature){
   const p=(feature && feature.properties) || {};
   const c = p.viewer_color ?? p.viewerColor ?? p.color ?? p["viewer_color"] ?? p["viewerColor"];
   if(typeof c === "string" && c.trim()) return c.trim();
-  return "#3388ff"; // Leaflet default
+  return "#3388ff";
 }
 
 function featureStyle(feature){
@@ -73,7 +93,6 @@ function featureStyle(feature){
   const isYellow = (cu==="#FFEB00" || cu==="#FFFF00" || cu==="#FFD400");
   return {color:c,fillColor:c,weight:(isYellow?3:1),fillOpacity:(isYellow?0.22:0.12)};
 }
-
 
 function bindOrUnbindTooltip(layer,title){
   if(layer.getTooltip && layer.getTooltip()) layer.unbindTooltip();
@@ -85,25 +104,12 @@ function refreshTooltips(){
   state.layer.eachLayer((layer)=>{const p=(layer.feature&&layer.feature.properties)||{};bindOrUnbindTooltip(layer,p.title||p.id||"");});
 }
 
-function chipsHtml(items){
-  const xs=(items||[]).map(x=>String(x??"").trim()).filter(Boolean);
-  if(!xs.length) return "";
-  return `<div style="display:flex;flex-wrap:wrap;gap:6px">${xs.map(x=>`<span style="display:inline-block;padding:3px 8px;border:1px solid #e6e6e6;border-radius:999px;font-size:12px;background:#fafafa">${escapeHtml(x)}</span>`).join("")}</div>`;
-}
-
-function linksHtml(urls){
-  const xs=(urls||[]).map(x=>String(x??"").trim()).filter(Boolean);
-  if(!xs.length) return "";
-  return `<div style="display:flex;flex-wrap:wrap;gap:8px">${xs.map(u=>`<a href="${escapeAttr(u)}" target="_blank" rel="noopener" style="font-size:12px;color:#1558d6;text-decoration:none;word-break:break-all">${escapeHtml(u)}</a>`).join(" ")}</div>`;
-}
-
 function pickPhotos(obj){
   return parseMaybeJsonArray(obj["wm-фото"] || obj["wm_photo"] || obj.photos || obj.photo || obj["photos"] || []);
 }
 
 function idToAddress(id){
   const s=String(id??"");
-  // Most ids look like: "ул._Фрунзе_16" -> "ул. Фрунзе 16"
   return s.replaceAll("_"," ").replace(/\s+/g," ").trim();
 }
 
@@ -113,14 +119,17 @@ function buildCardHTML(obj,id){
   const warning=viewer.warning||"";
 
   const title=obj.title||obj["wm-название"]||obj.id||id;
-  // Address: force from id (always has house number after underscore, per requirements)
   const address=idToAddress(id);
   const desc=obj.description||obj["описание"]||"";
-  const cats=parseMaybeJsonArray(obj.categories||obj["wm-категория"]||obj["wm-category"]||[]);
+  const catsRaw=obj.categories ?? obj["wm-категория"] ?? [];
+  const cats=parseMaybeJsonArray(catsRaw);
   const photos=pickPhotos(obj);
-  const color=(obj.viewer_color||obj["viewer_color"]||obj.color||obj["color"]||"").toString().trim();
+  const color=(obj.viewer_color||obj["viewer_color"]||"").trim();
 
-  const warnBlock = partial ? `<div class="tg-warning">${escapeHtml(warning||"Полной карточки нет — показаны только базовые данные.")}</div>` : "";
+  const warnBlock = partial || warning
+    ? `<div class="tg-warning">${escapeHtml((warning||"Данные могут быть неполными"))}</div>`
+    : "";
+
   const colorDot = color ? `<span class="tg-color-dot" title="${escapeAttr(color)}" style="background:${escapeAttr(color)}"></span>` : "";
 
   const photoBlock = photos.length
@@ -143,6 +152,18 @@ function buildCardHTML(obj,id){
     ? `<div class="tg-section"><div class="tg-section-title">Ещё фото (ссылки)</div><div class="tg-links">${photos.slice(1).map(u=>`<a href="${escapeAttr(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`).join(" ")}</div></div>`
     : ``;
 
+  const editBlock = `
+    <div class="tg-edit" data-editor-root data-object-id="${escapeAttr(id)}">
+      <div class="tg-edit-title">Редактирование</div>
+      <div class="tg-edit-row"><input class="tg-edit-input" data-edit-title placeholder="Название" value="${escapeAttr(title)}"/></div>
+      <div class="tg-edit-row"><textarea class="tg-edit-textarea" data-edit-description placeholder="Описание">${escapeHtml(desc)}</textarea></div>
+      <div class="tg-edit-row"><input class="tg-edit-input" data-edit-categories placeholder="Категории через запятую" value="${escapeAttr(cats.join(", "))}"/></div>
+      <div class="tg-edit-actions">
+        <button type="button" class="tg-edit-btn" data-edit-save>Сохранить</button>
+        <span class="tg-edit-status" data-edit-status></span>
+      </div>
+    </div>`;
+
   return `
   <div class="tg-card">
     ${warnBlock}
@@ -153,7 +174,59 @@ function buildCardHTML(obj,id){
     ${descHtml}
     ${catsHtml}
     ${morePhotos}
+    ${editBlock}
   </div>`;
+}
+
+function parseCategoriesInput(raw){
+  return String(raw||"").split(",").map(s=>s.trim()).filter(Boolean);
+}
+
+function attachEditorHandlers(popup,id){
+  const root=popup.getElement && popup.getElement();
+  if(!root) return;
+  const editor=root.querySelector("[data-editor-root]");
+  if(!editor) return;
+  const titleEl=editor.querySelector("[data-edit-title]");
+  const descEl=editor.querySelector("[data-edit-description]");
+  const catsEl=editor.querySelector("[data-edit-categories]");
+  const saveBtn=editor.querySelector("[data-edit-save]");
+  const statusEl=editor.querySelector("[data-edit-status]");
+  if(!titleEl || !descEl || !catsEl || !saveBtn || !statusEl) return;
+
+  const setEditStatus=(text,isError=false)=>{
+    statusEl.textContent=text;
+    statusEl.style.color=isError?"#8b0000":"#666";
+  };
+
+  saveBtn.addEventListener("click", async ()=>{
+    const payload={
+      title:String(titleEl.value||"").trim(),
+      description:String(descEl.value||""),
+      categories:parseCategoriesInput(catsEl.value)
+    };
+    if(!payload.title){ setEditStatus("Название не может быть пустым",true); return; }
+    saveBtn.disabled=true;
+    setEditStatus("Сохраняю…");
+    try{
+      await fetchJSON(`/api/object/${encodeURIComponent(id)}`,{
+        method:"PUT",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(payload)
+      });
+      setEditStatus("Сохранено");
+      await reloadObjects();
+      try{
+        const fresh=await fetchJSON(`/api/object/${encodeURIComponent(id)}`);
+        popup.setContent(buildCardHTML(fresh,id));
+        attachEditorHandlers(popup,id);
+      }catch(_){ }
+    }catch(e){
+      setEditStatus(`Ошибка: ${e.message||e}`,true);
+    }finally{
+      saveBtn.disabled=false;
+    }
+  });
 }
 
 async function openPopupFor(id,latlng){
@@ -165,6 +238,7 @@ async function openPopupFor(id,latlng){
   try{
     const obj=await fetchJSON(`/api/object/${encodeURIComponent(id)}`);
     popup.setContent(buildCardHTML(obj,id));
+    attachEditorHandlers(popup,id);
   }catch(e){
     popup.setContent(`<div class="tg-card">
       <div class="tg-title"><span>${escapeHtml(id)}</span></div>
