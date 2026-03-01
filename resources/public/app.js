@@ -59,9 +59,9 @@ function ensurePopupStyles(){
 .tg-chip{display:inline-block; padding:4px 10px; border:1px solid #c6d7f3; border-radius:999px; font-size:12px; background:#e8f0ff; color:#28518f;}
 .tg-links{display:flex; flex-wrap:wrap; gap:8px;}
 .tg-links a{font-size:12px; color:#1558d6; text-decoration:none; word-break:break-all;}
-.tg-links a:hover{text-decoration:underline;}
-.tg-card-actions{display:flex; gap:8px;}
-.tg-edit{margin-top:10px; padding-top:10px; border-top:1px dashed #d9e2f1;}
+.tg-card-actions{margin-top:12px; padding-top:10px; border-top:1px dashed #e5e5e5; display:flex; gap:8px;}
+.tg-edit{margin-top:12px; padding-top:10px; border-top:1px dashed #e5e5e5;}
+.tg-edit-title{font-size:12px; color:#666; margin:0 0 8px;}
 .tg-edit-row{margin:0 0 8px;}
 .tg-edit-input,.tg-edit-textarea{width:100%; border:1px solid #c4d2e8; border-radius:10px; padding:8px 10px; font-size:13px; font-family:inherit; background:#f3f7ff;}
 .tg-edit-input:focus,.tg-edit-textarea:focus{border-color:#4d86ff; box-shadow:0 0 0 3px rgba(77,134,255,.14); outline:none;}
@@ -149,6 +149,17 @@ function idToAddress(id){
   return s.replaceAll("_"," ").replace(/\s+/g," ").trim();
 }
 
+function editableFields(obj,id){
+  const rawColor=(obj.viewer_color||obj["viewer_color"]||"").trim();
+  const color=/^#[0-9a-fA-F]{6}$/.test(rawColor)?rawColor.toUpperCase():"#3388FF";
+  return {
+    title: obj.title||obj["wm-название"]||obj.id||id,
+    description: obj.description||obj["описание"]||"",
+    categories: parseMaybeJsonArray(obj.categories ?? obj["wm-категория"] ?? []),
+    viewer_color: color
+  };
+}
+
 function buildCardHTML(obj,id){
   const viewer=obj._viewer||obj.viewer||{};
   const partial=!!viewer.partial;
@@ -203,6 +214,9 @@ function buildCardHTML(obj,id){
     ${descHtml}
     ${catsHtml}
     ${morePhotos}
+    <div class="tg-card-actions">
+      <button type="button" class="tg-edit-btn" data-open-editor>Ред.</button>
+    </div>
   </div>`;
 }
 
@@ -214,16 +228,14 @@ function buildEditorHTML(obj,id){
 
   return `
   <div class="tg-card">
-    <div class="tg-card-head">
-      <div class="tg-title"><span>Редактирование</span></div>
-    </div>
+    <div class="tg-title"><span>Редактирование</span></div>
     <div class="tg-meta">Адрес: ${escapeHtml(idToAddress(id))}</div>
     <div class="tg-edit" data-editor-root data-object-id="${escapeAttr(id)}">
       <div class="tg-edit-row"><input class="tg-edit-input" data-edit-title placeholder="Название" value="${escapeAttr(title)}"/></div>
       <div class="tg-edit-row"><textarea class="tg-edit-textarea" data-edit-description placeholder="Описание">${escapeHtml(desc)}</textarea></div>
       <div class="tg-edit-row"><input class="tg-edit-input" data-edit-categories placeholder="Категории через запятую" value="${escapeAttr(cats.join(", "))}"/></div>
       <div class="tg-edit-actions">
-        <button type="button" class="tg-edit-btn tg-edit-btn-primary" data-edit-save>Сохранить</button>
+        <button type="button" class="tg-edit-btn" data-edit-save>Сохранить</button>
         <button type="button" class="tg-edit-btn" data-edit-cancel>Отмена</button>
         <span class="tg-edit-status" data-edit-status></span>
       </div>
@@ -235,44 +247,13 @@ function parseCategoriesInput(raw){
   return String(raw||"").split(",").map(s=>s.trim()).filter(Boolean);
 }
 
-function stopPopupEvent(ev){
-  if(!ev) return;
-  ev.preventDefault();
-  ev.stopPropagation();
-  if(typeof L!=="undefined" && L.DomEvent){
-    L.DomEvent.stop(ev);
-  }
-}
-
-function protectPopupInteractions(popup){
-  if(typeof L==="undefined" || !L.DomEvent || !popup || !popup.getElement) return;
-  const root=popup.getElement();
-  if(!root) return;
-  L.DomEvent.disableClickPropagation(root);
-  L.DomEvent.disableScrollPropagation(root);
-}
-
-function bindPopupAction(btn,handler){
-  if(!btn) return;
-  const invoke=(ev)=>{
-    stopPopupEvent(ev);
-    handler(ev);
-  };
-  btn.addEventListener("click",invoke);
-  btn.addEventListener("mousedown",stopPopupEvent);
-  btn.addEventListener("mouseup",stopPopupEvent);
-  btn.addEventListener("touchstart",stopPopupEvent,{passive:false});
-  btn.addEventListener("touchend",stopPopupEvent,{passive:false});
-}
-
 function attachCardHandlers(popup,obj,id){
   const root=popup.getElement && popup.getElement();
   if(!root) return;
   const openBtn=root.querySelector("[data-open-editor]");
   if(!openBtn) return;
-  bindPopupAction(openBtn,()=>{
+  openBtn.addEventListener("click",()=>{
     popup.setContent(buildEditorHTML(obj,id));
-    protectPopupInteractions(popup);
     attachEditorHandlers(popup,id,obj);
   });
 }
@@ -292,12 +273,11 @@ function attachEditorHandlers(popup,id,sourceObj){
 
   const showCard=(obj)=>{
     popup.setContent(buildCardHTML(obj,id));
-    protectPopupInteractions(popup);
     attachCardHandlers(popup,obj,id);
   };
 
   if(cancelBtn){
-    bindPopupAction(cancelBtn,()=>showCard(sourceObj));
+    cancelBtn.addEventListener("click",()=>showCard(sourceObj));
   }
 
   const setEditStatus=(text,isError=false)=>{
@@ -339,19 +319,20 @@ async function openPopupFor(id,latlng,feature){
   const fallbackObj=featureToCardObject(feature);
   const popup=L.popup({className:"tg-popup",maxWidth:660,minWidth:520})
     .setLatLng(latlng)
-    .setContent(buildCardHTML(fallbackObj,id))
+    .setContent('<div style="font-size:13px;color:#4c5d7a">Загрузка карточки…</div>')
     .openOn(state.map);
   protectPopupInteractions(popup);
-  attachCardHandlers(popup,fallbackObj,id);
-
-  let settled=false;
-  const showError=(msg)=>{
-    if(settled) return;
-    settled=true;
-    const errObj={...fallbackObj,_viewer:{partial:true,warning:`Не удалось догрузить полную карточку: ${String(msg||"unknown error")}`}};
-    popup.setContent(buildCardHTML(errObj,id));
-    protectPopupInteractions(popup);
-    attachCardHandlers(popup,errObj,id);
+  try{
+    const obj=await fetchJSON(`/api/object/${encodeURIComponent(id)}`,{timeoutMs:12000});
+    popup.setContent(buildCardHTML(obj,id));
+    attachCardHandlers(popup,obj,id);
+  }catch(e){
+    popup.setContent(`<div class="tg-card">
+      <div class="tg-title"><span>${escapeHtml(id)}</span></div>
+      <div class="tg-meta">Адрес: ${escapeHtml(idToAddress(id))}</div>
+      <div class="tg-warning" style="border-color:#ffd0d0;background:#fff3f3;color:#7a0000">Не удалось загрузить карточку: ${escapeHtml(String(e.message||e))}</div>
+      <div class="tg-meta">Tried URL: /api/object/${escapeHtml(encodeURIComponent(id))}</div>
+    </div>`);
   };
 
   const watchdog=setTimeout(()=>showError("Превышено время ожидания ответа"),13000);
