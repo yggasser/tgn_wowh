@@ -35,6 +35,7 @@ const bboxParam=(map)=>{const b=map.getBounds();return [b.getWest().toFixed(7),b
 const escapeHtml=(s)=>String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
 const escapeAttr=(s)=>escapeHtml(s).replaceAll("`","&#096;");
 const norm=(s)=>String(s??"").trim().toLowerCase();
+const asText=(v)=>typeof v==="string"?v:String(v??"");
 
 function ensurePopupStyles(){
   if(document.getElementById("tg-popup-style")) return;
@@ -165,13 +166,13 @@ function buildCardHTML(obj,id){
   const partial=!!viewer.partial;
   const warning=viewer.warning||"";
 
-  const title=obj.title||obj["wm-название"]||obj.id||id;
+  const title=asText(obj.title||obj["wm-название"]||obj.id||id);
   const address=idToAddress(id);
-  const desc=obj.description||obj["описание"]||"";
+  const desc=asText(obj.description||obj["описание"]||"");
   const catsRaw=obj.categories ?? obj["wm-категория"] ?? [];
   const cats=parseMaybeJsonArray(catsRaw);
   const photos=pickPhotos(obj);
-  const color=(obj.viewer_color||obj["viewer_color"]||"").trim();
+  const color=asText(obj.viewer_color ?? obj["viewer_color"]).trim();
 
   const warnBlock = partial || warning
     ? `<div class="tg-warning">${escapeHtml((warning||"Данные могут быть неполными"))}</div>`
