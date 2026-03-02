@@ -91,8 +91,7 @@
     (contains? edit :description) (assoc :description (:description edit)
                                          :описание (:description edit))
     (contains? edit :categories) (assoc :categories (:categories edit)
-                                        :wm-категория (:categories edit))
-    (contains? edit :viewer_color) (assoc :viewer_color (:viewer_color edit))))
+                                        :wm-категория (:categories edit))))
 
 (defn- apply-edit-to-feature [feature edit]
   (-> feature
@@ -100,8 +99,6 @@
         (assoc-in [:properties :title] (:title edit)))
       (cond-> (contains? edit :categories)
         (assoc-in [:properties :categories] (:categories edit)))
-      (cond-> (contains? edit :viewer_color)
-        (assoc-in [:properties :viewer_color] (:viewer_color edit)))
       (assoc-in [:properties :id]
                 (or (:id feature) (get-in feature [:properties :id])))))
 
@@ -114,16 +111,11 @@
                          (vector? v) (mapv (comp str str/trim) v)
                          (seq? v) (mapv (comp str str/trim) v)
                          (nil? v) []
-                         :else [])))
-        viewer-color (when (contains? payload :viewer_color)
-                       (let [c (some-> (:viewer_color payload) str str/trim)]
-                         (when (and (some? c) (re-matches #"(?i)^#[0-9a-f]{6}$" c))
-                           (str/upper-case c))))]
+                         :else [])))]
     (cond-> {}
       (and (some? title) (not (str/blank? title))) (assoc :title title)
       (some? description) (assoc :description description)
-      (some? categories) (assoc :categories categories)
-      (some? viewer-color) (assoc :viewer_color viewer-color))))
+      (some? categories) (assoc :categories categories))))
 
 (defn- update-in-memory! [id edit]
   (swap! state
