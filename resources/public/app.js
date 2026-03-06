@@ -1,5 +1,6 @@
 // Fixed category filtering + stable object card + per-object color + object editing
-const state={shownCount:0,cats:[],catsAll:[],selectedCats:new Set(),catFilter:"",q:"",showLabels:true,map:null,layer:null,lastReq:0,abort:null,year:{min:null,max:null,from:null,to:null,step:10,includeUnknown:true}};
+const state={shownCount:0,cats:[],catsAll:[],selectedCats:new Set(),catFilter:"",q:"",showLabels:true,map:null,layer:null,lastReq:0,abort:null,year:{min:null,max:null,from:null,to:null,step:10,includeUnknown:true},styleRules:[]};
+const STYLE_RULES_STORAGE_KEY="tg_style_rules_v1";
 const debounce=(fn,ms)=>{let t=null;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};};
 const setStatus=(t)=>{const el=document.getElementById("status");if(el) el.textContent=t;};
 
@@ -64,6 +65,58 @@ const bboxParam=(map)=>{const b=map.getBounds();return [b.getWest().toFixed(7),b
 const escapeHtml=(s)=>String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
 const escapeAttr=(s)=>escapeHtml(s).replaceAll("`","&#096;");
 const norm=(s)=>String(s??"").trim().toLowerCase();
+const categoryMatches=(feature,cat)=>{
+  const expected=norm(cat);
+  if(!expected) return false;
+  const cats=new Set(featureCategories(feature));
+  return cats.has(expected);
+};
+
+function defaultStyleRule(){
+  return {category:"",color:"#3388FF",fillOpacity:0.12,weight:1,noStroke:false,minZoom:0,maxZoom:20};
+}
+
+function sanitizeStyleRule(raw){
+  const base=defaultStyleRule();
+  const color=String(raw?.color ?? base.color).trim();
+  const isHex=/^#[0-9a-fA-F]{6}$/.test(color);
+  const minZoom=Math.max(0, Math.min(22, Number(raw?.minZoom)));
+  const maxZoom=Math.max(0, Math.min(22, Number(raw?.maxZoom)));
+  return {
+    category:String(raw?.category ?? "").trim(),
+    color:isHex?color.toUpperCase():base.color,
+    fillOpacity:Math.max(0, Math.min(1, Number(raw?.fillOpacity ?? base.fillOpacity))),
+    weight:Math.max(0, Math.min(12, Number(raw?.weight ?? base.weight))),
+    noStroke:Boolean(raw?.noStroke),
+    minZoom:Number.isFinite(minZoom)?minZoom:base.minZoom,
+    maxZoom:Number.isFinite(maxZoom)?Math.max(minZoom,maxZoom):base.maxZoom
+  };
+}
+
+function loadStyleRules(){
+  try{
+    const raw=localStorage.getItem(STYLE_RULES_STORAGE_KEY);
+    if(!raw) return [];
+    const arr=JSON.parse(raw);
+    if(!Array.isArray(arr)) return [];
+    return arr.map(sanitizeStyleRule);
+  }catch(_){ return []; }
+}
+
+function saveStyleRules(){
+  try{ localStorage.setItem(STYLE_RULES_STORAGE_KEY, JSON.stringify(state.styleRules)); }catch(_){ }
+}
+
+function findStyleRuleForFeature(feature){
+  return state.styleRules.find(r=>categoryMatches(feature,r.category)) || null;
+}
+
+function shouldFeatureBeVisibleAtZoom(feature,zoom){
+  const r=findStyleRuleForFeature(feature);
+  if(!r) return true;
+  return zoom>=r.minZoom && zoom<=r.maxZoom;
+}
+
 const asText=(v)=>typeof v==="string"?v:String(v??"");
 function isTimeCategory(cat){
   const s=String(cat||"").trim();
@@ -301,6 +354,16 @@ function getFeatureColor(feature){
 }
 
 function featureStyle(feature){
+  const rule=findStyleRuleForFeature(feature);
+  if(rule){
+    return {
+      color:rule.noStroke?"transparent":rule.color,
+      fillColor:rule.color,
+      weight:rule.noStroke?0:rule.weight,
+      fillOpacity:rule.fillOpacity,
+      opacity:rule.noStroke?0:1
+    };
+  }
   const c=getFeatureColor(feature);
   const cu=(c||"").toUpperCase();
   const isYellow = (cu==="#FFEB00" || cu==="#FFFF00" || cu==="#FFD400");
@@ -551,6 +614,57 @@ function normalizeCats(list){
   return arr.map((x)=>({category:String(x?.category??x?.name??x?.title??""),count:Number(x?.count??0)||0})).filter(x=>x.category);
 }
 
+function renderStyleRules(){
+  const wrap=document.getElementById("styleRulesList");
+  if(!wrap) return;
+  wrap.innerHTML="";
+  state.styleRules.forEach((rule,idx)=>{
+    const row=document.createElement("div");
+    row.className="styleRuleRow";
+    row.innerHTML=`
+      <input class="input styleRuleCat" placeholder="Категория" value="${escapeAttr(rule.category)}">
+      <div class="styleRuleGrid">
+        <label>Цвет <input class="input" type="color" value="${escapeAttr(rule.color)}"></label>
+        <label>Прозр. <input class="input" type="number" min="0" max="1" step="0.01" value="${escapeAttr(rule.fillOpacity)}"></label>
+        <label>Обводка <input class="input" type="number" min="0" max="12" step="1" value="${escapeAttr(rule.weight)}"></label>
+      </div>
+      <div class="styleRuleGrid">
+        <label>Мин. zoom <input class="input" type="number" min="0" max="22" step="1" value="${escapeAttr(rule.minZoom)}"></label>
+        <label>Макс. zoom <input class="input" type="number" min="0" max="22" step="1" value="${escapeAttr(rule.maxZoom)}"></label>
+        <label class="toggle"><input type="checkbox" ${rule.noStroke?"checked":""}> <span>Без обводки</span></label>
+      </div>
+      <button type="button" class="btn btnSmall">Удалить</button>
+    `;
+    const [catEl,colorEl,opEl,weightEl,minZoomEl,maxZoomEl,noStrokeEl,delBtn]=[
+      row.querySelector('.styleRuleCat'),
+      row.querySelectorAll('input')[1],
+      row.querySelectorAll('input')[2],
+      row.querySelectorAll('input')[3],
+      row.querySelectorAll('input')[4],
+      row.querySelectorAll('input')[5],
+      row.querySelectorAll('input')[6],
+      row.querySelector('button')
+    ];
+    const sync=()=>{
+      state.styleRules[idx]=sanitizeStyleRule({
+        category:catEl.value,
+        color:colorEl.value,
+        fillOpacity:opEl.value,
+        weight:weightEl.value,
+        minZoom:minZoomEl.value,
+        maxZoom:maxZoomEl.value,
+        noStroke:noStrokeEl.checked
+      });
+      saveStyleRules();
+      scheduleReload();
+    };
+    [catEl,colorEl,opEl,weightEl,minZoomEl,maxZoomEl].forEach(el=>el.addEventListener('input',sync));
+    noStrokeEl.addEventListener('change',sync);
+    delBtn.addEventListener('click',()=>{state.styleRules.splice(idx,1); saveStyleRules(); renderStyleRules(); scheduleReload();});
+    wrap.appendChild(row);
+  });
+}
+
 function renderCats(){
   const wrap=document.getElementById("cats"); const hint=document.getElementById("catsHint");
   if(!wrap) return; wrap.innerHTML="";
@@ -585,6 +699,8 @@ async function reloadObjects(){
 
     let feats=(geo.features||[]);
     if(state.selectedCats.size>0) feats=feats.filter(featureHasAnySelectedCategory);
+    const zoom=state.map.getZoom();
+    feats=feats.filter(f=>shouldFeatureBeVisibleAtZoom(f,zoom));
     // Year range filter (step 10 by default). If year is unknown, keep it only when includeUnknown=true.
     if(state.year.min!=null && state.year.max!=null){
       const a=state.year.from??state.year.min; const b=state.year.to??state.year.max;
@@ -622,6 +738,7 @@ base.addTo(state.map);
 // const labels=L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",{subdomains:"abcd",maxZoom:20,opacity:1});
 // labels.addTo(state.map);
   state.map.on("moveend", scheduleReload);
+  state.map.on("zoomend", scheduleReload);
 
   const catFilterEl=document.getElementById("catFilter");
   if(catFilterEl) catFilterEl.addEventListener("input",(e)=>{state.catFilter=e.target.value; renderCats();});
@@ -657,11 +774,28 @@ if(clearEl){
   }
 }
 
+  const addRuleBtn=document.getElementById("addStyleRule");
+  if(addRuleBtn){
+    addRuleBtn.addEventListener("click",()=>{state.styleRules.push(defaultStyleRule()); saveStyleRules(); renderStyleRules();});
+  }
+
+  const reloadStylesBtn=document.getElementById("reloadStyles");
+  if(reloadStylesBtn){
+    reloadStylesBtn.addEventListener("click",()=>{state.styleRules=loadStyleRules(); renderStyleRules(); scheduleReload();});
+  }
+
   const toggle=document.getElementById("toggleLabels");
   if(toggle){
     toggle.addEventListener("change",()=>{state.showLabels=!!toggle.checked; refreshTooltips();});
     state.showLabels=!!toggle.checked;
   }
+
+  state.styleRules=loadStyleRules();
+  if(state.styleRules.length===0){
+    state.styleRules=[sanitizeStyleRule({category:"зеленая зона",color:"#2ECC71",noStroke:true,fillOpacity:0.24,weight:0,minZoom:0,maxZoom:20})];
+    saveStyleRules();
+  }
+  renderStyleRules();
 
   try{
     const raw=await fetchJSON("/api/categories");
